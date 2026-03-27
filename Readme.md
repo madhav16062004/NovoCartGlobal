@@ -6,8 +6,8 @@
 3. [Bronze Layer: Data Ingestion](#bronze-layer-data-ingestion)
 4. [Silver Layer: Data Transformation & Cleaning](#silver-layer-data-transformation--cleaning)
 5. [Gold Layer: Dimensional Model](#gold-layer-dimensional-model)
-6. [KPIs (Key Performance Indicators)](#kpis-key-performance-indicators)
-7. [Data Cube](#data-cube)
+6. [Data Cube: Pre-Joined Analytics Layer](#data-cube-pre-joined-analytics-layer)
+7. [KPIs (Key Performance Indicators)](#kpis-key-performance-indicators)
 8. [Data Quality Framework](#data-quality-framework)
 9. [Storage and Catalogs](#storage-and-catalogs)
 
@@ -15,7 +15,7 @@
 
 ## Project Overview
 
-**NovoCartGlobal** is an end-to-end data warehouse solution built on Databricks using the **Medallion Architecture** (Bronze → Silver → Gold). The project processes e-commerce data from multiple sources, performs comprehensive data cleaning and transformation, creates a star schema dimensional model, and generates business KPIs for analytics and reporting.
+**NovoCartGlobal** is an end-to-end data warehouse solution built on Databricks using the **Medallion Architecture** (Bronze → Silver → Gold). The project processes e-commerce data from multiple sources, performs comprehensive data cleaning and transformation, creates a star schema dimensional model, builds a pre-joined data cube for analytics, and generates business KPIs for reporting.
 
 **Key Technologies:**
 * **Platform:** Databricks on AWS
@@ -28,7 +28,7 @@
 
 ## Data Architecture
 
-### Medallion Architecture Layers
+### Medallion Architecture with Data Cube Layer
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -36,34 +36,47 @@
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  S3 Bucket (CSV Files)                                          │
-│  s3://databricks-project-jman/NovoCartGlobal/                  │
-│           │                                                      │
-│           ▼                                                      │
-│  ┌─────────────────┐         ┌─────────────────┐              │
-│  │  BRONZE LAYER   │         │  Raw Data       │              │
-│  │  (Raw Ingestion)│────────▶│  Tables (5)     │              │
-│  └─────────────────┘         └─────────────────┘              │
-│           │                                                      │
-│           ▼                                                      │
-│  ┌─────────────────┐         ┌─────────────────┐              │
-│  │  SILVER LAYER   │         │  Cleaned &      │              │
-│  │  (Cleaned Data) │────────▶│  Transformed    │              │
-│  └─────────────────┘         │  Tables (5)     │              │
-│           │                   └─────────────────┘              │
-│           ▼                                                      │
-│  ┌─────────────────┐         ┌─────────────────┐              │
-│  │   GOLD LAYER    │         │  Dimensional    │              │
-│  │  (Analytics)    │────────▶│  Model (Star)   │              │
-│  │                 │         │  • 4 Dimensions │              │
-│  │                 │         │  • 1 Fact Table │              │
-│  │                 │         │  • 10 KPIs      │              │
-│  │                 │         │  • 1 Data Cube  │              │
-│  └─────────────────┘         └─────────────────┘              │
-│           │                                                      │
-│           ▼                                                      │
-│  ┌─────────────────────────────────────┐                       │
-│  │     BI DASHBOARDS & ANALYTICS       │                       │
-│  └─────────────────────────────────────┘                       │
+│  s3://databricks-project-jman/NovoCartGlobal/                   │
+│           │                                                     │
+│           ▼                                                     │
+│  ┌─────────────────┐         ┌─────────────────┐                │
+│  │  BRONZE LAYER   │         │  Raw Data       │                │
+│  │  (Raw Ingestion)│────────▶│  Tables (5)     │                │
+│  └─────────────────┘         └─────────────────┘                │
+│           │                                                     │
+│           ▼                                                     │
+│  ┌─────────────────┐         ┌─────────────────┐                │
+│  │  SILVER LAYER   │         │  Cleaned &      │                │
+│  │  (Cleaned Data) │────────▶│  Transformed    │                │
+│  └─────────────────┘         │  Tables (5)     │                │
+│           │                   └─────────────────┘               │
+│           ▼                                                     │
+│  ┌─────────────────┐         ┌─────────────────┐                │
+│  │   GOLD LAYER    │         │  Dimensional    │                │
+│  │  (Star Schema)  │────────▶│  Model          │                │
+│  │                 │         │  • 4 Dimensions │                │
+│  │                 │         │  • 1 Fact Table │                │
+│  └─────────────────┘         └─────────────────┘                │
+│           │                                                     │
+│           ▼                                                     │
+│  ┌─────────────────────────────────────┐                        │
+│  │      DATA CUBE (Pre-Joined)         │                        │
+│  │  Fact + All Dimensions Combined     │                        │
+│  │  • Single Table: data_cube          │                        │
+│  │  • 51 Columns                       │                        │
+│  │  • 2,048 Records                    │                        │
+│  └─────────────────────────────────────┘                        │
+│           │                                                     │
+│           ▼                                                     │
+│  ┌─────────────────────────────────────┐                        │
+│  │     KPI TABLES (10 Metrics)         │                        │
+│  │  Calculated from Data Cube          │                        │
+│  └─────────────────────────────────────┘                        │
+│           │                                                     │
+│           ▼                                                     │
+│  ┌─────────────────────────────────────┐                        │
+│  │     BI DASHBOARDS & ANALYTICS       │                        │
+│  └─────────────────────────────────────┘                        │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -459,12 +472,137 @@ The Gold layer implements a **Star Schema** optimized for analytical queries and
 
 ---
 
+## Data Cube: Pre-Joined Analytics Layer
+
+### Purpose
+The **Data Cube** is a unified, pre-joined table that combines the fact table with all dimension tables. It serves as a **single source of truth for all KPI calculations and analytics**, eliminating the need to repeatedly join fact and dimension tables.
+
+**Notebook:** `/NovoCartGlobal/Gold/Reporting/NovoCart Data Cube Builder`
+
+**Table:** `novacart_dev.gold.data_cube`
+
+### What is the Data Cube?
+
+A data cube is a **denormalized, pre-joined table** that combines:
+* **Fact table** (`fact_order_items`): Transaction-level metrics (revenue, quantity, prices)
+* **Dimension tables**: Descriptive attributes for analysis
+  * `dim_products`: Product details (name, category, origin)
+  * `dim_customers`: Customer registration information
+  * `dim_dates`: Time-based attributes (year, quarter, month, day of week)
+  * `dim_orders`: Order-level details (status, channel, country)
+
+### Architecture Flow
+
+```
+┌─────────────────┐
+│ fact_order_items│
+└────────┬────────┘
+         │
+         ├─────────JOIN────────┐
+         │                     │
+         ▼                     ▼
+┌─────────────┐         ┌─────────────┐
+│dim_products │         │dim_customers│
+└──────┬──────┘         └──────┬──────┘
+       │                       │
+       └──────┐    ┌───────────┘
+              │    │
+              ▼    ▼
+         ┌─────────────┐
+         │  dim_dates  │
+         └──────┬──────┘
+                │
+                ▼
+         ┌─────────────┐
+         │ dim_orders  │
+         └──────┬──────┘
+                │
+                ▼
+      ┌──────────────────┐
+      │   DATA CUBE      │
+      │ (Pre-Joined)     │
+      │ 51 Columns       │
+      │ 2,048 Records    │
+      └──────────────────┘
+                │
+                ▼
+         ┌──────────┐
+         │   KPIs   │
+         └──────────┘
+```
+
+### Schema Details
+
+**Total Columns:** 51
+
+**Column Categories:**
+
+1. **Keys (5 columns):**
+   * `order_item_key`, `order_key`, `product_key`, `customer_key`, `date_key`
+
+2. **Metrics (4 columns):**
+   * `revenue_usd` - Revenue converted to USD
+   * `quantity` - Number of units
+   * `unit_price` - Price per unit
+   * `line_total` - Line total in local currency
+
+3. **Dimension Attributes (29 columns):**
+   * **From fact table:** `order_status_clean`, `fact_channel`, `order_country`, `fact_category`, `product_currency`
+   * **From dim_products:** `product_name`, `product_category`, `product_price`, `product_dim_currency`, `product_origin_country`
+   * **From dim_customers:** `registration_date`, `registration_year`, `registration_month`
+   * **From dim_dates:** `full_date`, `order_year`, `order_quarter`, `order_month`, `order_month_name`, `order_day`, `day_of_week`, `day_name`, `is_weekend`
+   * **From dim_orders:** `customer_id`, `order_date`, `order_status`, `order_channel`, `country_code`, `order_total_amount`, `order_currency`
+
+4. **Data Quality Flags (13 columns):**
+   * All `dq_*` flags from the fact table for quality monitoring
+
+### Key Join Logic
+
+```python
+data_cube = fact \
+    .join(dim_products, fact.product_key == dim_products.product_key, "left") \
+    .join(dim_customers, fact.customer_key == dim_customers.customer_key, "left") \
+    .join(dim_dates, fact.date_key == dim_dates.full_date, "left") \
+    .join(dim_orders, fact.order_key == dim_orders.order_key, "left")
+```
+
+### Benefits
+
+✓ **Simplified Queries:** No need to repeatedly join fact and dimension tables  
+✓ **Better Performance:** Single table scan instead of multiple joins  
+✓ **Consistency:** All KPIs use the same underlying data structure  
+✓ **Easier Maintenance:** Update joins in one place instead of across multiple notebooks  
+✓ **Self-Service Analytics:** Business users can query a single table with all context  
+✓ **BI Tool Friendly:** Direct connection to pre-joined data
+
+### Usage Example
+
+```python
+# Load the data cube
+cube = spark.table("novacart_dev.gold.data_cube")
+
+# Example: Calculate revenue by product category
+revenue_by_category = cube.filter(F.col("order_status_clean") == "completed") \
+    .groupBy("product_category") \
+    .agg(F.sum("revenue_usd").alias("total_revenue"))
+```
+
+### Storage
+* **Table:** `novacart_dev.gold.data_cube`
+* **Format:** Delta Lake
+* **Records:** 2,048 (one per order line item)
+* **Columns:** 51
+
+---
+
 ## KPIs (Key Performance Indicators)
 
 ### Purpose
-Pre-calculated business metrics stored as separate tables for dashboard and reporting use.
+Pre-calculated business metrics stored as separate tables for dashboard and reporting use. **All KPIs are calculated from the pre-joined data cube** for consistency and performance.
 
 **Notebook:** `/NovoCartGlobal/Gold/Reporting/NovoCart Gold KPIs`
+
+**Source:** `novacart_dev.gold.data_cube` (pre-joined fact + dimensions)
 
 ### KPI Tables
 
@@ -475,10 +613,11 @@ Pre-calculated business metrics stored as separate tables for dashboard and repo
 
 **Calculation:**
 ```python
-SUM(revenue_usd) WHERE order_status_clean = 'completed'
+cube.filter(F.col("order_status_clean") == "completed") \
+    .agg(F.sum("revenue_usd").alias("total_revenue_usd"))
 ```
 
-**Result:** \$1,210,553.90 USD
+**Result:** $1,210,553.90 USD
 
 ---
 
@@ -490,7 +629,9 @@ SUM(revenue_usd) WHERE order_status_clean = 'completed'
 * `revenue_usd` - Total revenue in USD
 * `order_items` - Number of line items
 
-**Top Country:** India (IN) with \$294,969.82 USD and 297 items
+**Source:** Data cube filtered by `order_status_clean = 'completed'`
+
+**Top Country:** India (IN) with $294,969.82 USD and 297 items
 
 ---
 
@@ -503,7 +644,9 @@ SUM(revenue_usd) WHERE order_status_clean = 'completed'
 * `order_items` - Number of line items
 * `orders` - Number of orders
 
-**Top Channel:** Mobile with \$638,780.82 USD and 266 orders
+**Source:** Data cube filtered by `order_status_clean = 'completed'`, grouped by `fact_channel`
+
+**Top Channel:** Mobile with $638,780.82 USD and 266 orders
 
 ---
 
@@ -520,12 +663,20 @@ SUM(revenue_usd) WHERE order_status_clean = 'completed'
 * `orders` - Number of orders
 * `avg_exchange_rate` - Average exchange rate used
 
+**Source:** Data cube grouped by `product_currency`
+
 ---
 
 #### KPI 4: Completed Order Count
 **Table:** `novacart_dev.gold.kpi_completed_order_count`
 
 **Metric:** Number of orders with status = 'completed'
+
+**Calculation:**
+```python
+cube.filter(F.col("order_status_clean") == "completed") \
+    .select("order_key").distinct().count()
+```
 
 **Result:** 519 completed orders
 
@@ -544,6 +695,8 @@ SUM(revenue_usd) WHERE order_status_clean = 'completed'
 completed_order_rate = (completed_orders / total_orders) * 100
 ```
 
+**Source:** Data cube distinct order keys
+
 **Result:** 64.875% (519 completed out of 800 total)
 
 ---
@@ -558,13 +711,15 @@ completed_order_rate = (completed_orders / total_orders) * 100
 
 **Calculation:**
 ```python
-AVG(SUM(revenue_usd) GROUP BY order_key) WHERE order_status_clean = 'completed'
+cube.filter(F.col("order_status_clean") == "completed") \
+    .groupBy("order_key").agg(F.sum("revenue_usd").alias("order_total")) \
+    .agg(F.avg("order_total"), F.min("order_total"), F.max("order_total"))
 ```
 
 **Results:**
-* Average: \$2,332.47 USD
-* Min: \$0.64 USD
-* Max: \$26,345.67 USD
+* Average: $2,332.47 USD
+* Min: $0.64 USD
+* Max: $26,345.67 USD
 
 ---
 
@@ -579,7 +734,9 @@ AVG(SUM(revenue_usd) GROUP BY order_key) WHERE order_status_clean = 'completed'
 * `total_quantity_sold` - Total units sold
 * `avg_price` - Average selling price
 
-**Top Product:** "laptops product 78" with \$104,870.25 USD and 45 units sold
+**Source:** Data cube grouped by product, filtered by completed orders
+
+**Top Product:** "laptops product 78" with $104,870.25 USD and 45 units sold
 
 ---
 
@@ -593,7 +750,9 @@ AVG(SUM(revenue_usd) GROUP BY order_key) WHERE order_status_clean = 'completed'
 
 **Calculation:**
 ```python
-active_customers = COUNT(DISTINCT customer_key) WHERE order_status_clean = 'completed'
+active_customers = cube.filter(F.col("order_status_clean") == "completed") \
+    .select("customer_key").distinct().count()
+total_customers = cube.select("customer_key").distinct().count()
 active_rate = (active_customers / total_customers) * 100
 ```
 
@@ -612,6 +771,8 @@ active_rate = (active_customers / total_customers) * 100
 * `registration_month` - Month
 * `new_customers` - Number of new customers registered
 
+**Source:** Data cube grouped by registration year and month
+
 **Purpose:** Track customer growth over time
 
 ---
@@ -625,6 +786,8 @@ active_rate = (active_customers / total_customers) * 100
 * `records_with_issues` - Records with at least one DQ flag
 * `data_quality_score` - Percentage of clean records
 * `total_dq_checks` - Number of DQ checks performed
+
+**Source:** Data cube with all DQ flags analyzed
 
 **Results:**
 * Total Records: 2,048
@@ -643,70 +806,6 @@ active_rate = (active_customers / total_customers) * 100
 
 ---
 
-## Data Cube
-
-### Purpose
-A **unified, single-table view** of all key metrics for easy consumption by BI tools and dashboards.
-
-**Notebook:** `/NovoCartGlobal/Gold/Reporting/NovoCart DataCube`
-
-**Table:** `novacart_dev.gold.kpi_data_cube`
-
-### Schema
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `category` | String | Metric category (Financial, Order, Customer, etc.) |
-| `metric_name` | String | Name of the metric |
-| `value` | Double | Numeric value of the metric |
-| `unit` | String | Unit of measurement (USD, Count, Percentage) |
-| `generated_at` | Timestamp | When the cube was generated |
-
-### Metric Categories
-
-1. **Financial Metrics**
-   * Total Revenue: \$1,210,553.90 USD
-   * Average Order Value: \$2,332.47 USD
-   * Min Order Value: \$0.64 USD
-   * Max Order Value: \$26,345.67 USD
-
-2. **Order Metrics**
-   * Total Orders: 800
-   * Completed Orders: 519
-   * Completion Rate: 64.88%
-
-3. **Customer Metrics**
-   * Total Customers: 500
-   * Active Customers: 331
-   * Customer Active Rate: 66.2%
-
-4. **Data Quality**
-   * Total Records: 2,048
-   * Clean Records: 1,730
-   * Records with Issues: 318
-   * Quality Score: 84.47%
-
-5. **Geographic Metrics**
-   * Top Country: India (IN) - \$294,969.82 USD
-   * Top Country Order Items: 297
-
-6. **Channel Metrics**
-   * Top Channel: Mobile - \$638,780.82 USD
-   * Top Channel Orders: 266
-
-7. **Product Metrics**
-   * Top Product: "laptops product 78" - \$104,870.25 USD
-   * Top Product Units Sold: 45
-
-### Data Cube Benefits
-
-* **Single Query:** Retrieve all KPIs in one query
-* **Dashboard-Friendly:** Easy to consume by BI tools
-* **Versioned:** Includes `generated_at` timestamp
-* **Standardized:** Consistent structure across all metrics
-
----
-
 ## Data Quality Framework
 
 ### Purpose
@@ -714,7 +813,7 @@ Comprehensive data quality monitoring with 20 different checks across all data s
 
 ### Data Quality Flags
 
-Each record in the fact table has 20 boolean flags (1 = issue present, 0 = no issue).
+Each record in the fact table (and subsequently the data cube) has 20 boolean flags (1 = issue present, 0 = no issue).
 
 ### Flag Categories
 
@@ -736,7 +835,7 @@ Each record in the fact table has 20 boolean flags (1 = issue present, 0 = no is
 * `dq_invalid_product_price` - Invalid product price
 * `dq_invalid_exchange` - Invalid exchange rate
 
-#### Referential Integrity Flags (5)
+#### Referential Integrity Flags (3)
 * `dq_orphan_customer` - Order references non-existent customer
 * `dq_orphan_order` - Order item references non-existent order
 * `dq_orphan_product` - Order item references non-existent product
@@ -786,6 +885,7 @@ novacart_dev (Catalog)
     ├── dim_orders
     ├── dim_products
     ├── fact_order_items
+    ├── data_cube  ◀── Pre-joined analytics layer
     ├── kpi_total_revenue
     ├── kpi_revenue_by_country
     ├── kpi_revenue_by_channel
@@ -797,8 +897,7 @@ novacart_dev (Catalog)
     ├── kpi_active_customers_count
     ├── kpi_customer_acquisition
     ├── kpi_data_quality_score
-    ├── kpi_dq_breakdown
-    └── kpi_data_cube
+    └── kpi_dq_breakdown
 ```
 
 ### Storage Format
@@ -815,8 +914,9 @@ novacart_dev (Catalog)
 | Silver | `silver` | 5 tables |
 | Gold - Dimensions | `gold` | 4 tables |
 | Gold - Facts | `gold` | 1 table |
+| Gold - Data Cube | `gold` | 1 table |
 | Gold - KPIs | `gold` | 12 tables |
-| **Total** | | **27 tables** |
+| **Total** | | **28 tables** |
 
 ---
 
@@ -855,6 +955,16 @@ dq_invalid_exchange_date, dq_invalid_exchange_currency, dq_invalid_exchange,
 etl_timestamp
 ```
 
+#### data_cube (Pre-Joined Analytics Table)
+
+**Total Columns:** 51 columns
+* Keys: 5
+* Metrics: 4
+* Dimension Attributes: 29
+* Data Quality Flags: 13
+
+**Purpose:** Single table combining fact_order_items with all dimension tables for simplified analytics
+
 ---
 
 ## Project Summary
@@ -867,9 +977,9 @@ etl_timestamp
 
 ✅ **Dimensional Model:** Star schema with 4 dimensions + 1 fact table
 
-✅ **KPIs:** 10 business metrics pre-calculated and stored
+✅ **Data Cube:** Pre-joined analytics table combining fact + all dimensions (51 columns, 2,048 records)
 
-✅ **Data Cube:** Unified view of all metrics in a single table
+✅ **KPIs:** 10 business metrics calculated from the data cube
 
 ✅ **Data Quality:** 20 quality checks across all data sources
 
@@ -883,9 +993,15 @@ etl_timestamp
 
 3. **Data Quality Monitoring:** Comprehensive DQ framework with 84.47% clean data rate
 
-4. **Optimized for Analytics:** Partitioned fact table, star schema design, denormalized attributes
+4. **Optimized for Analytics:** 
+   * Partitioned fact table
+   * Star schema design
+   * Pre-joined data cube for fast queries
+   * Denormalized attributes for performance
 
 5. **Scalable Architecture:** Medallion architecture supports incremental updates and data lineage
+
+6. **Single Source of Truth:** Data cube eliminates redundant joins and ensures KPI consistency
 
 ### Business Insights Enabled
 
@@ -919,9 +1035,9 @@ etl_timestamp
 ### Gold Layer - Fact
 * `/Users/madhavkkp@gmail.com/NovoCartGlobal/Gold/fact/fact_order_items`
 
-### Gold Layer - Reporting
-* `/Users/madhavkkp@gmail.com/NovoCartGlobal/Gold/Reporting/NovoCart Gold KPIs`
-* `/Users/madhavkkp@gmail.com/NovoCartGlobal/Gold/Reporting/NovoCart DataCube`
+### Gold Layer - Data Cube & Reporting
+* `/Users/madhavkkp@gmail.com/NovoCartGlobal/Gold/Reporting/NovoCart Data Cube Builder` ◀── **Creates pre-joined data cube**
+* `/Users/madhavkkp@gmail.com/NovoCartGlobal/Gold/Reporting/NovoCart Gold KPIs` ◀── **Calculates KPIs from data cube**
 
 ### Dashboard
 * `/Users/madhavkkp@gmail.com/NovoCart KPI Dashboard.lvdash.json`
@@ -933,14 +1049,17 @@ etl_timestamp
 1. **Incremental Loading:** Implement incremental updates instead of full refresh
 2. **Data Lineage:** Use Delta Lake time travel for historical analysis
 3. **Automated Scheduling:** Schedule notebooks using Databricks Jobs
+   * Run data cube builder after fact table updates
+   * Run KPI notebook after data cube refresh
 4. **Alerts:** Set up data quality alerts when thresholds are breached
 5. **Additional KPIs:** Consider adding customer lifetime value, churn rate, etc.
 6. **Slowly Changing Dimensions:** Implement SCD Type 2 for dimension tracking
 7. **Data Cataloging:** Add table descriptions and column comments in Unity Catalog
+8. **Query Optimization:** Monitor data cube query performance and add indexes if needed
 
 ---
 
-**Documentation Last Updated:** March 26, 2026
+**Documentation Last Updated:** January 2025
 
 **Project Owner:** madhavkkp@gmail.com
 
